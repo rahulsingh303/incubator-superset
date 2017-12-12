@@ -26,7 +26,7 @@ from flask_babel import gettext as __
 from flask_babel import lazy_gettext as _
 import pandas as pd
 import sqlalchemy as sqla
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, and_, or_
 from sqlalchemy.engine.url import make_url
 from unidecode import unidecode
 from werkzeug.routing import BaseConverter
@@ -147,18 +147,46 @@ class DashboardFilter(SupersetFilter):
         Dash = models.Dashboard  # noqa
         # TODO(bogdan): add `schema_access` support here
         datasource_perms = self.get_view_menus('datasource_access')
+        dash_rest_perms = self.get_view_menus('dashboard_restriction')
+        dash_rest_slice_ids_qry = (
+            db.session
+            .query(Slice.id)
+            .filter(Slice.perm.in_(dash_rest_perms))
+        )
         slice_ids_qry = (
             db.session
             .query(Slice.id)
             .filter(Slice.perm.in_(datasource_perms))
         )
-        query = query.filter(
+        dashboard_perms = self.get_view_menus('dashboard_access')
+        dash_filters = [
             Dash.id.in_(
-                db.session.query(Dash.id)
-                .distinct()
-                .join(Dash.slices)
-                .filter(Slice.id.in_(slice_ids_qry)),
-            ),
+                db.session.query(Dash.id).distinct().join(Dash.slices)
+                .filter(and_(
+                    Slice.id.in_(slice_ids_qry),
+                    or_(
+                        ~Slice.id.in_(dash_rest_slice_ids_qry),
+                        Dash.perm.in_(dashboard_perms),
+                    )
+                ))
+            )
+        ]
+
+        if g.user.is_authenticated():
+            User = sm.user_model
+            dash_filters.append(
+                Dash.id.in_(
+                    db.session.query(Dash.id)
+                    .distinct()
+                    .join(Dash.owners)
+                    .filter(User.id == g.user.id)
+                )
+            )
+
+        query = query.filter(
+            or_(
+                *dash_filters
+            )
         )
         return query
 
@@ -585,6 +613,15 @@ class DashboardModelView(SupersetModelView, DeleteMixin):  # noqa
 
     def pre_delete(self, obj):
         check_ownership(obj)
+
+    def post_add(self, dashboard):
+        security.merge_perm(sm, 'dashboard_access', dashboard.get_perm())
+
+    def post_update(self, dashboard):
+        self.post_add(dashboard)
+
+    def _delete(self, pk):
+        DeleteMixin._delete(self, pk)
 
     @action('mulexport', __('Export'), __('Export dashboards?'), 'fa-database')
     def mulexport(self, items):

@@ -35,8 +35,9 @@ from sqlalchemy_utils import EncryptedType
 
 from superset import app, db, db_engine_specs, sm, utils
 from superset.connectors.connector_registry import ConnectorRegistry
-from superset.models.helpers import AuditMixinNullable, ImportMixin, set_perm
+from superset.models.helpers import AuditMixinNullable, ImportMixin, set_perm, set_dashboard_perm
 from superset.viz import viz_types
+
 install_aliases()
 from urllib import parse  # noqa
 
@@ -53,7 +54,6 @@ def set_related_perm(mapper, connection, target):  # noqa
         ds = db.session.query(src_class).filter_by(id=int(id_)).first()
         if ds:
             target.perm = ds.perm
-
 
 class Url(Model, AuditMixinNullable):
     """Used for the short url feature"""
@@ -312,6 +312,7 @@ class Dashboard(Model, AuditMixinNullable, ImportMixin):
     description = Column(Text)
     css = Column(Text)
     json_metadata = Column(Text)
+    perm = Column(String(1000))
     slug = Column(String(255), unique=True)
     slices = relationship(
         'Slice', secondary=dashboard_slices, backref='dashboards')
@@ -344,6 +345,11 @@ class Dashboard(Model, AuditMixinNullable, ImportMixin):
     @property
     def datasources(self):
         return {slc.datasource for slc in self.slices}
+
+    def get_perm(self):
+        return (
+            "[{obj.dashboard_title}]"
+            "(id:{obj.id})").format(obj=self)
 
     @property
     def sqla_metadata(self):
@@ -537,6 +543,8 @@ class Dashboard(Model, AuditMixinNullable, ImportMixin):
             'datasources': eager_datasources,
         })
 
+sqla.event.listen(Dashboard, 'after_insert', set_dashboard_perm)
+sqla.event.listen(Dashboard, 'after_update', set_dashboard_perm)
 
 class Database(Model, AuditMixinNullable, ImportMixin):
 

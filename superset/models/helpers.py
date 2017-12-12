@@ -344,3 +344,17 @@ def set_perm(mapper, connection, target):  # noqa
 
     # add to view menu if not already exists
     merge_perm(sm, 'datasource_access', target.get_perm(), connection)
+    merge_perm(sm, 'dashboard_restriction', target.get_perm(), connection)
+
+def set_dashboard_perm(mapper, connection, target):  # noqa
+
+    if target.perm != target.get_perm():
+        link_table = target.__table__
+        connection.execute(
+            link_table.update()
+            .where(link_table.c.id == target.id)
+            .values(perm=target.get_perm())
+        )
+
+    # add to view menu if not already exists
+    merge_perm(sm, 'dashboard_access', target.get_perm(), connection)
