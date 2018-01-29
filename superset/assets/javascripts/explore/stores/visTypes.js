@@ -130,6 +130,44 @@ export const visTypes = {
     },
   },
 
+  horiz_bar: {
+    label: t('Horizontal - Bar Chart'),
+    showOnExplore: true,
+    controlPanelSections: [
+      {
+        label: t('Query'),
+        expanded: true,
+        controlSetRows: [
+          ['metrics'],
+          ['groupby'],
+          ['columns'],
+          ['row_limit'],
+        ],
+      },
+      {
+        label: t('Chart Options'),
+        controlSetRows: [
+          ['color_scheme'],
+          ['show_legend', 'show_bar_value'],
+          ['bar_stacked', 'order_bars'],
+          ['y_axis_format', 'left_margin'],
+          ['x_axis_label', 'y_axis_label'],
+          ['reduce_x_ticks', 'contribution'],
+          ['show_controls'],
+        ],
+      },
+    ],
+    controlOverrides: {
+      groupby: {
+        label: t('Series'),
+      },
+      columns: {
+        label: t('Breakdowns'),
+        description: t('Defines how each series is broken down'),
+      },
+    },
+  },
+
   pie: {
     label: t('Pie Chart'),
     showOnExplore: true,

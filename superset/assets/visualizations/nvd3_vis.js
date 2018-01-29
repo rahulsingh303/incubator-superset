@@ -144,6 +144,20 @@ function nvd3Vis(slice, payload) {
     return width;
   };
 
+  let height = slice.height();  
+  const horizBarchartHeight = function () {
+    let bars;
+    if (fd.bar_stacked) {
+      bars = d3.max(data, function (d) { return d.values.length; });
+    } else {
+      bars = d3.sum(data, function (d) { return d.values.length; });
+    }
+    if (bars * minBarWidth > height) {
+      return bars * minBarWidth + 60;
+    }
+    return height;
+  };
+
   const vizType = fd.viz_type;
   const f = d3.format('.3s');
   const reduceXTicks = fd.reduce_x_ticks || false;
@@ -231,6 +245,30 @@ function nvd3Vis(slice, payload) {
           width = barchartWidth();
         }
         chart.width(width);
+        break;
+
+      case 'horiz_bar':
+        chart = nv.models.multiBarHorizontalChart()
+        .showControls(fd.show_controls)
+        .groupSpacing(0.1); // Distance between each group of bars.
+
+        chart.xAxis.showMaxMin(false);
+
+        stacked = fd.bar_stacked;
+        chart.stacked(stacked);
+        if (fd.order_bars) {
+          data.forEach((d) => {
+            d.values.sort((a, b) => tryNumify(a.x) < tryNumify(b.x) ? -1 : 1);
+          });
+        }
+        if (fd.show_bar_value) {
+          setTimeout(function () {
+            addTotalBarValues(svg, chart, data, stacked, fd.y_axis_format);
+          }, animationTime);
+        }
+        if (!reduceXTicks) {
+          height = horizBarchartHeight();
+        }
         break;
 
       case 'pie':
@@ -329,13 +367,16 @@ function nvd3Vis(slice, payload) {
       }
     }
 
-    let height = slice.height();
     if (vizType === 'bullet') {
       height = Math.min(height, 50);
     }
 
     chart.height(height);
-    slice.container.css('height', height + 'px');
+    if (vizType === 'horiz_bar') {
+      slice.container.css('height', slice.height() + 'px');
+    } else {
+      slice.container.css('height', height + 'px');
+    }
 
     if (chart.forceY &&
         fd.y_axis_bounds &&
@@ -363,7 +404,7 @@ function nvd3Vis(slice, payload) {
       chart.x2Axis.tickFormat(xAxisFormatter);
       height += 30;
     }
-    const isXAxisString = ['dist_bar', 'box_plot'].indexOf(vizType) >= 0;
+    const isXAxisString = ['dist_bar', 'horiz_bar', 'box_plot'].indexOf(vizType) >= 0;
     if (!isXAxisString && chart.xAxis && chart.xAxis.tickFormat) {
       chart.xAxis.tickFormat(xAxisFormatter);
     }
@@ -440,6 +481,15 @@ function nvd3Vis(slice, payload) {
       chart.margin({ bottom: fd.bottom_margin });
     }
 
+    if (vizType === 'horiz_bar') {
+      if (fd.left_margin === 'auto') {  
+        const stretchMargin = calculateStretchMargins(payload);
+        chart.margin({ left: stretchMargin });
+      } else {
+        chart.margin({ left: fd.left_margin });
+      }
+    }
+
     if (vizType === 'dual_line') {
       const yAxisFormatter1 = d3.format(fd.y_axis_format);
       const yAxisFormatter2 = d3.format(fd.y_axis_2_format);
@@ -467,9 +517,17 @@ function nvd3Vis(slice, payload) {
       const maxYAxisLabelWidth = chart.yAxis2 ? getMaxLabelSize(slice.container, 'nv-y1')
                                               : getMaxLabelSize(slice.container, 'nv-y');
       const maxXAxisLabelHeight = getMaxLabelSize(slice.container, 'nv-x');
-      chart.margin({ left: maxYAxisLabelWidth + marginPad });
-      if (fd.y_axis_label && fd.y_axis_label !== '') {
-        chart.margin({ left: maxYAxisLabelWidth + marginPad + 25 });
+      if (vizType === 'horiz_bar') {
+        const bottomMarginPad = 45;
+        chart.margin({ bottom: bottomMarginPad });
+        if (fd.y_axis_label && fd.y_axis_label !== '') {
+          chart.margin({ bottom: bottomMarginPad + 25 });
+        }
+      } else {
+        chart.margin({ left: maxYAxisLabelWidth + marginPad });
+        if (fd.y_axis_label && fd.y_axis_label !== '') {
+          chart.margin({ left: maxYAxisLabelWidth + marginPad + 25 });
+        }
       }
       // Hack to adjust margins to accommodate long axis tick labels.
       // - has to be done only after the chart has been rendered once
@@ -494,7 +552,11 @@ function nvd3Vis(slice, payload) {
       }
 
       if (fd.x_axis_label && fd.x_axis_label !== '' && chart.xAxis) {
-        chart.margin({ bottom: maxXAxisLabelHeight + marginPad + 25 });
+        if (vizType === 'horiz_bar') {
+          chart.margin({ left: maxXAxisLabelHeight + marginPad + 25 });          
+        } else {
+          chart.margin({ bottom: maxXAxisLabelHeight + marginPad + 25 });
+        }
       }
       if (fd.bottom_margin && fd.bottom_margin !== 'auto') {
         chart.margin().bottom = fd.bottom_margin;
@@ -507,8 +569,14 @@ function nvd3Vis(slice, payload) {
       const margins = chart.margin();
       if (fd.x_axis_label && fd.x_axis_label !== '' && chart.xAxis) {
         let distance = 0;
-        if (margins.bottom && !isNaN(margins.bottom)) {
-          distance = margins.bottom - 45;
+        if (vizType === 'horiz_bar') {
+          if (margins.left && !isNaN(margins.left)) {
+            distance = margins.left - 70;
+          }
+        } else {
+          if (margins.bottom && !isNaN(margins.bottom)) {
+            distance = margins.bottom - 45;
+          }
         }
         // nvd3 bug axisLabelDistance is disregarded on xAxis
         // https://github.com/krispo/angular-nvd3/issues/90
@@ -517,8 +585,14 @@ function nvd3Vis(slice, payload) {
 
       if (fd.y_axis_label && fd.y_axis_label !== '' && chart.yAxis) {
         let distance = 0;
-        if (margins.left && !isNaN(margins.left)) {
-          distance = margins.left - 70;
+        if (vizType === 'horiz_bar') {
+          if (margins.bottom && !isNaN(margins.bottom)) {
+            distance = margins.bottom - 45;
+          }
+        } else {
+          if (margins.left && !isNaN(margins.left)) {
+            distance = margins.left - 70;
+          }
         }
         chart.yAxis.axisLabel(fd.y_axis_label).axisLabelDistance(distance);
       }
@@ -724,6 +798,10 @@ function nvd3Vis(slice, payload) {
         .attr('height', height)
         .attr('width', width)
         .call(chart);
+
+      if (vizType === 'horiz_bar') {
+        svg.attr('style', 'height: ' + height + 'px;');
+      }
     }
     return chart;
   };

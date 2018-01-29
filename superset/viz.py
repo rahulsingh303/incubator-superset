@@ -1332,6 +1332,13 @@ class DistributionBarViz(DistributionPieViz):
             chart_data.append(d)
         return chart_data
 
+class HorizontalBarViz(DistributionBarViz):
+    """A good old bar chart"""
+
+    viz_type = 'horiz_bar'
+    verbose_name = _('Horizontal - Bar Chart')
+    is_timeseries = False
+
 
 class SunburstViz(BaseViz):
 
